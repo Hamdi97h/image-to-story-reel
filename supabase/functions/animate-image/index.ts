@@ -36,17 +36,15 @@ serve(async (req) => {
 
     console.log('Starting image animation with prompt:', prompt);
 
-    // Use Stable Video Diffusion for image animation
+    // Use Hailuo 2 for image animation (working model)
     const output = await replicate.run(
-      "stability-ai/stable-video-diffusion",
+      "minimax/hailuo-02",
       {
         input: {
           image: imageBase64,
-          motion_bucket_id: 127,
-          cond_aug: 0.02,
-          decoding_t: 14,
-          video_length: Math.min(duration || 14, 25), // Max 25 frames for this model
-          sizing_strategy: "maintain_aspect_ratio"
+          prompt: prompt,
+          duration: Math.min(duration || 6, 10), // Max 10 seconds for this model
+          quality: "standard" // or "pro" for 1080p
         }
       }
     );
