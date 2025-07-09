@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 const VideoGenerator = () => {
   const [prompt, setPrompt] = useState('');
@@ -28,38 +29,6 @@ const VideoGenerator = () => {
     }
   };
 
-  const generateScenario = async (text: string) => {
-    const response = await fetch('https://api.deepseek.com/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer sk-402590153c554f0692444a6df437ac68'
-      },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: [
-          {
-            role: 'system',
-            content: 'Tu es un expert en création de scénarios visuels. Génère un court scénario de 3 scènes maximum pour une vidéo de 10-15 secondes. Chaque scène doit être courte et descriptive. Format : "Scène 1: [description]\\nScène 2: [description]\\nScène 3: [description]"'
-          },
-          {
-            role: 'user',
-            content: `Crée un scénario visuel basé sur ce prompt: "${text}"`
-          }
-        ],
-        max_tokens: 200,
-        temperature: 0.7
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error('Erreur lors de la génération du scénario');
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-  };
-
   const handleGenerate = async () => {
     if (!prompt.trim() || !image) {
       toast({
@@ -72,25 +41,32 @@ const VideoGenerator = () => {
 
     setIsGenerating(true);
     try {
-      // Générer le scénario avec DeepSeek
-      const generatedScenario = await generateScenario(prompt);
-      setScenario(generatedScenario);
-
-      toast({
-        title: "Scénario généré !",
-        description: "Le scénario a été créé avec succès. La génération vidéo nécessite un backend avec FFmpeg.",
+      // Convert image to base64
+      const reader = new FileReader();
+      const imageBase64 = await new Promise<string>((resolve) => {
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.readAsDataURL(image);
       });
 
-      // TODO: Intégrer FFmpeg via backend Supabase
-      // Pour l'instant, on simule une génération
-      setTimeout(() => {
-        setGeneratedVideo('/placeholder-video.mp4');
-        setIsGenerating(false);
-        toast({
-          title: "Vidéo générée !",
-          description: "Votre vidéo est prête à être visionnée.",
-        });
-      }, 3000);
+      // Call the Edge Function to generate video
+      const { data, error } = await supabase.functions.invoke('generate-video', {
+        body: {
+          prompt: prompt,
+          imageFile: imageBase64
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      setScenario(data.scenario);
+      setGeneratedVideo(data.videoUrl);
+      
+      toast({
+        title: "Vidéo générée !",
+        description: "Votre vidéo est prête à être visionnée.",
+      });
 
     } catch (error) {
       console.error('Erreur:', error);
@@ -99,6 +75,7 @@ const VideoGenerator = () => {
         description: "Une erreur est survenue lors de la génération.",
         variant: "destructive",
       });
+    } finally {
       setIsGenerating(false);
     }
   };
@@ -231,12 +208,18 @@ const VideoGenerator = () => {
 
               {generatedVideo && (
                 <div className="space-y-4">
-                  <div className="bg-black rounded-lg aspect-video flex items-center justify-center">
-                    <p className="text-white">
-                      Aperçu vidéo (nécessite intégration FFmpeg)
-                    </p>
-                  </div>
-                  <Button className="w-full" variant="outline">
+                  <video
+                    controls
+                    className="w-full rounded-lg aspect-video bg-black"
+                    src={generatedVideo}
+                  >
+                    Votre navigateur ne supporte pas la lecture vidéo.
+                  </video>
+                  <Button 
+                    className="w-full" 
+                    variant="outline"
+                    onClick={() => window.open(generatedVideo, '_blank')}
+                  >
                     <Download className="w-4 h-4 mr-2" />
                     Télécharger la vidéo
                   </Button>
@@ -252,24 +235,6 @@ const VideoGenerator = () => {
             </CardContent>
           </Card>
         </div>
-
-        {/* Notice technique */}
-        <Card className="mt-8 border-amber-200 bg-amber-50">
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-3">
-              <div className="w-2 h-2 rounded-full bg-amber-500 mt-2 flex-shrink-0" />
-              <div>
-                <h3 className="font-semibold text-amber-800 mb-2">
-                  Intégration backend requise
-                </h3>
-                <p className="text-amber-700 text-sm">
-                  Pour la génération complète de vidéos avec FFmpeg, connectez votre projet à Supabase 
-                  pour créer des fonctions backend qui peuvent traiter les fichiers et exécuter FFmpeg.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
