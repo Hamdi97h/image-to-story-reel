@@ -37,18 +37,18 @@ serve(async (req) => {
     console.log('Starting image animation with prompt:', prompt);
     console.log('Image base64 length:', imageBase64.length);
 
-    // Use Stable Video Diffusion for image animation
+    // Use a working image-to-video model
     console.log('Calling Replicate API with stable-video-diffusion...');
     const output = await replicate.run(
-      "stability-ai/stable-video-diffusion:3f0457e4619dadc561154bdddbf76b68cc2b21e97b28b7ffd4da8c1369b0e5f6",
+      "runwayml/stable-video-diffusion-img2vid-xt",
       {
         input: {
+          input_image: imageBase64,
+          motion_bucket_id: 127,
           cond_aug: 0.02,
           decoding_t: 14,
-          input_image: imageBase64,
           video_length: "14_frames_with_svd",
           sizing_strategy: "maintain_aspect_ratio",
-          motion_bucket_id: 127,
           frames_per_second: 6
         }
       }
