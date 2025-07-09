@@ -40,7 +40,7 @@ serve(async (req) => {
     // Use a working image-to-video model
     console.log('Calling Replicate API with stable-video-diffusion...');
     const output = await replicate.run(
-      "runwayml/stable-video-diffusion-img2vid-xt",
+      "stability-ai/stable-video-diffusion-img2vid-xt:3f0457e4619dadc561154bdddbf76b68cc2b21e97b28b7ffd4da8c1369b0e5f6",
       {
         input: {
           input_image: imageBase64,
