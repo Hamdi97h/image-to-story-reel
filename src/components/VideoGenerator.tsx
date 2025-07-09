@@ -30,149 +30,28 @@ const VideoGenerator = () => {
     }
   };
 
-  const generateVideoFromScenario = async (scenarioText: string, imageFile: File) => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d')!;
-    canvas.width = 1280;
-    canvas.height = 720;
-
-    // Load the image
-    const img = new Image();
-    const imageUrl = URL.createObjectURL(imageFile);
-    
-    return new Promise<string>((resolve, reject) => {
-      img.onload = async () => {
-        const stream = canvas.captureStream(30);
-        const mediaRecorder = new MediaRecorder(stream, {
-          mimeType: 'video/webm;codecs=vp9'
-        });
-        
-        const chunks: Blob[] = [];
-        mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-        mediaRecorder.onstop = () => {
-          const blob = new Blob(chunks, { type: 'video/webm' });
-          const videoUrl = URL.createObjectURL(blob);
-          resolve(videoUrl);
-        };
-
-        mediaRecorder.start();
-
-        // Calculate timing
-        const totalDuration = duration * 1000; // Convert to milliseconds
-        const scenes = scenarioText.split(/Scène \d+:/).filter(scene => scene.trim().length > 0);
-        const sceneDuration = totalDuration / scenes.length;
-        const frameInterval = 1000 / 30; // 30 FPS
-        const framesPerScene = Math.floor(sceneDuration / frameInterval);
-
-        for (let sceneIndex = 0; sceneIndex < scenes.length; sceneIndex++) {
-          const scene = scenes[sceneIndex].trim();
-          
-          for (let frame = 0; frame < framesPerScene; frame++) {
-            const progress = frame / framesPerScene;
-            
-            // Clear canvas
-            ctx.fillStyle = '#000000';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // Calculate image transformations for animations
-            const aspectRatio = img.width / img.height;
-            let baseWidth = canvas.width;
-            let baseHeight = canvas.width / aspectRatio;
-            
-            if (baseHeight > canvas.height) {
-              baseHeight = canvas.height;
-              baseWidth = canvas.height * aspectRatio;
-            }
-            
-            // Add zoom effect
-            const zoomFactor = 1 + (Math.sin(progress * Math.PI * 2) * 0.1);
-            const drawWidth = baseWidth * zoomFactor;
-            const drawHeight = baseHeight * zoomFactor;
-            
-            // Add slow pan effect
-            const panX = Math.sin(progress * Math.PI) * 20;
-            const panY = Math.cos(progress * Math.PI) * 10;
-            
-            const x = (canvas.width - drawWidth) / 2 + panX;
-            const y = (canvas.height - drawHeight) / 2 + panY;
-            
-            // Draw image with smooth scaling
-            ctx.save();
-            ctx.filter = `brightness(${0.8 + Math.sin(progress * Math.PI) * 0.2})`;
-            ctx.drawImage(img, x, y, drawWidth, drawHeight);
-            ctx.restore();
-            
-            // Add animated overlay
-            const overlayOpacity = 0.4 + Math.sin(progress * Math.PI * 4) * 0.1;
-            ctx.fillStyle = `rgba(0, 0, 0, ${overlayOpacity})`;
-            ctx.fillRect(0, canvas.height - 200, canvas.width, 200);
-            
-            // Add animated text
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 28px Arial';
-            ctx.textAlign = 'center';
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-            ctx.shadowBlur = 10;
-            ctx.shadowOffsetX = 2;
-            ctx.shadowOffsetY = 2;
-            
-            // Text animation effects
-            const textAlpha = Math.min(1, progress * 3); // Fade in effect
-            const textScale = 0.8 + (textAlpha * 0.2); // Scale effect
-            const textY = canvas.height - 150 + (1 - textAlpha) * 30; // Slide up effect
-            
-            ctx.save();
-            ctx.globalAlpha = textAlpha;
-            ctx.scale(textScale, textScale);
-            
-            // Word wrap for long text
-            const words = scene.split(' ');
-            const lines: string[] = [];
-            let currentLine = '';
-            
-            words.forEach(word => {
-              const testLine = currentLine + (currentLine ? ' ' : '') + word;
-              const metrics = ctx.measureText(testLine);
-              if (metrics.width > (canvas.width - 100) / textScale && currentLine) {
-                lines.push(currentLine);
-                currentLine = word;
-              } else {
-                currentLine = testLine;
-              }
-            });
-            if (currentLine) lines.push(currentLine);
-            
-            // Draw text lines with animation
-            lines.forEach((line, index) => {
-              const lineY = (textY + (index * 35)) / textScale;
-              const lineDelay = index * 0.2;
-              const lineAlpha = Math.max(0, Math.min(1, (progress - lineDelay) * 4));
-              
-              ctx.globalAlpha = textAlpha * lineAlpha;
-              ctx.fillText(line, canvas.width / 2 / textScale, lineY);
-            });
-            
-            ctx.restore();
-            
-            // Add scene transition effect
-            if (sceneIndex > 0 && frame < 15) {
-              const transitionAlpha = 1 - (frame / 15);
-              ctx.fillStyle = `rgba(0, 0, 0, ${transitionAlpha})`;
-              ctx.fillRect(0, 0, canvas.width, canvas.height);
-            }
-            
-            // Wait for next frame
-            await new Promise(resolve => setTimeout(resolve, frameInterval));
-          }
-        }
-
-        mediaRecorder.stop();
-        URL.revokeObjectURL(imageUrl);
-      };
-      
-      img.onerror = () => reject(new Error('Failed to load image'));
-      img.src = imageUrl;
+  const generateVideoFromImage = async (imageFile: File, promptText: string) => {
+    // Convert image to base64
+    const reader = new FileReader();
+    const imageBase64 = await new Promise<string>((resolve) => {
+      reader.onload = (e) => resolve(e.target?.result as string);
+      reader.readAsDataURL(imageFile);
     });
+
+    // Call the Edge Function to animate the image with AI
+    const { data, error } = await supabase.functions.invoke('animate-image', {
+      body: {
+        imageBase64: imageBase64,
+        prompt: promptText,
+        duration: duration
+      }
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data.videoUrl;
   };
 
   const handleGenerate = async () => {
@@ -200,13 +79,13 @@ const VideoGenerator = () => {
 
       setScenario(data.scenario);
       
-      // Generate video from scenario
-      const videoUrl = await generateVideoFromScenario(data.scenario, image);
+      // Generate AI-animated video from image and prompt
+      const videoUrl = await generateVideoFromImage(image, prompt);
       setGeneratedVideo(videoUrl);
       
       toast({
-        title: "Vidéo générée !",
-        description: "Votre vidéo a été créée avec succès.",
+        title: "Vidéo animée générée !",
+        description: "Votre photo a été transformée en vidéo animée avec succès.",
       });
 
     } catch (error) {
