@@ -48,7 +48,20 @@ const VideoGenerator = () => {
     });
 
     if (error) {
-      throw new Error(error.message);
+      console.error('Edge function error:', error);
+      throw new Error(`Animation failed: ${error.message || 'Unknown error'}`);
+    }
+
+    if (!data) {
+      throw new Error('No data received from animation service');
+    }
+
+    if (data.error) {
+      throw new Error(data.error);
+    }
+
+    if (!data.videoUrl) {
+      throw new Error('No video URL received from animation service');
     }
 
     return data.videoUrl;
