@@ -38,18 +38,13 @@ serve(async (req) => {
     console.log('Image base64 length:', imageBase64.length);
 
     // Use a working image-to-video model
-    console.log('Calling Replicate API with stable-video-diffusion...');
+    console.log('Calling Replicate API with minimax video-01...');
     const output = await replicate.run(
-      "stability-ai/stable-video-diffusion-img2vid-xt",
+      "minimax/video-01",
       {
         input: {
-          input_image: imageBase64,
-          motion_bucket_id: 127,
-          cond_aug: 0.02,
-          decoding_t: 14,
-          video_length: "14_frames_with_svd",
-          sizing_strategy: "maintain_aspect_ratio",
-          frames_per_second: 6
+          image: imageBase64,
+          prompt: prompt
         }
       }
     );
