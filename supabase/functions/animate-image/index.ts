@@ -38,7 +38,7 @@ serve(async (req) => {
 
     // Use Stable Video Diffusion for image animation
     const output = await replicate.run(
-      "aicapcut/stable-video-diffusion-img2vid-xt-optimized",
+      "stability-ai/stable-video-diffusion",
       {
         input: {
           image: imageBase64,
