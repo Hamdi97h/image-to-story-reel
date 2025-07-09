@@ -50,15 +50,35 @@ serve(async (req) => {
     );
 
     console.log('Video generation completed:', output);
+    console.log('Output type:', typeof output);
+    console.log('Output structure:', JSON.stringify(output, null, 2));
 
     if (!output) {
       throw new Error('No output received from Replicate API');
     }
 
+    // Handle different response formats from minimax/video-01
+    let videoUrl;
+    if (typeof output === 'string') {
+      videoUrl = output;
+    } else if (Array.isArray(output) && output.length > 0) {
+      videoUrl = output[0];
+    } else if (output && typeof output === 'object') {
+      // Check for common property names
+      videoUrl = output.url || output.video_url || output.video || output.output || output.data;
+    }
+
+    console.log('Extracted video URL:', videoUrl);
+
+    if (!videoUrl) {
+      console.error('Could not extract video URL from output:', output);
+      throw new Error('Could not extract video URL from API response');
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
-        videoUrl: output,
+        videoUrl: videoUrl,
         message: 'Vidéo animée générée avec succès!'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
