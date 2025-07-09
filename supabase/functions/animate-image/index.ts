@@ -36,8 +36,13 @@ serve(async (req) => {
 
     console.log('Starting image animation with prompt:', prompt);
 
+    // Add timeout wrapper for the Replicate API call
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Request timed out after 5 minutes')), 5 * 60 * 1000);
+    });
+
     // Use Hailuo 2 for image animation (working model)
-    const output = await replicate.run(
+    const replicatePromise = replicate.run(
       "minimax/hailuo-02",
       {
         input: {
@@ -48,6 +53,9 @@ serve(async (req) => {
         }
       }
     );
+
+    console.log('Waiting for Replicate API response...');
+    const output = await Promise.race([replicatePromise, timeoutPromise]);
 
     console.log('Video generation completed:', output);
 
