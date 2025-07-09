@@ -29,6 +29,100 @@ const VideoGenerator = () => {
     }
   };
 
+  const generateVideoFromScenario = async (scenarioText: string, imageFile: File) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    canvas.width = 1280;
+    canvas.height = 720;
+
+    // Load the image
+    const img = new Image();
+    const imageUrl = URL.createObjectURL(imageFile);
+    
+    return new Promise<string>((resolve, reject) => {
+      img.onload = async () => {
+        const stream = canvas.captureStream(30);
+        const mediaRecorder = new MediaRecorder(stream, {
+          mimeType: 'video/webm;codecs=vp9'
+        });
+        
+        const chunks: Blob[] = [];
+        mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(chunks, { type: 'video/webm' });
+          const videoUrl = URL.createObjectURL(blob);
+          resolve(videoUrl);
+        };
+
+        mediaRecorder.start();
+
+        // Split scenario into scenes
+        const scenes = scenarioText.split(/Scène \d+:/).filter(scene => scene.trim().length > 0);
+        const sceneDuration = 3000; // 3 seconds per scene
+
+        for (let i = 0; i < scenes.length; i++) {
+          const scene = scenes[i].trim();
+          
+          // Clear canvas
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Draw image as background
+          const aspectRatio = img.width / img.height;
+          let drawWidth = canvas.width;
+          let drawHeight = canvas.width / aspectRatio;
+          
+          if (drawHeight > canvas.height) {
+            drawHeight = canvas.height;
+            drawWidth = canvas.height * aspectRatio;
+          }
+          
+          const x = (canvas.width - drawWidth) / 2;
+          const y = (canvas.height - drawHeight) / 2;
+          ctx.drawImage(img, x, y, drawWidth, drawHeight);
+          
+          // Add overlay
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+          ctx.fillRect(0, canvas.height - 200, canvas.width, 200);
+          
+          // Add text
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 24px Arial';
+          ctx.textAlign = 'center';
+          
+          const words = scene.split(' ');
+          const lines: string[] = [];
+          let currentLine = '';
+          
+          words.forEach(word => {
+            const testLine = currentLine + (currentLine ? ' ' : '') + word;
+            const metrics = ctx.measureText(testLine);
+            if (metrics.width > canvas.width - 100 && currentLine) {
+              lines.push(currentLine);
+              currentLine = word;
+            } else {
+              currentLine = testLine;
+            }
+          });
+          if (currentLine) lines.push(currentLine);
+          
+          lines.forEach((line, index) => {
+            ctx.fillText(line, canvas.width / 2, canvas.height - 150 + (index * 30));
+          });
+          
+          // Wait for scene duration
+          await new Promise(resolve => setTimeout(resolve, sceneDuration));
+        }
+
+        mediaRecorder.stop();
+        URL.revokeObjectURL(imageUrl);
+      };
+      
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = imageUrl;
+    });
+  };
+
   const handleGenerate = async () => {
     if (!prompt.trim() || !image) {
       toast({
@@ -41,13 +135,6 @@ const VideoGenerator = () => {
 
     setIsGenerating(true);
     try {
-      // Convert image to base64
-      const reader = new FileReader();
-      const imageBase64 = await new Promise<string>((resolve) => {
-        reader.onload = (e) => resolve(e.target?.result as string);
-        reader.readAsDataURL(image);
-      });
-
       // Call the Edge Function to generate scenario
       const { data, error } = await supabase.functions.invoke('generate-video', {
         body: {
@@ -61,9 +148,13 @@ const VideoGenerator = () => {
 
       setScenario(data.scenario);
       
+      // Generate video from scenario
+      const videoUrl = await generateVideoFromScenario(data.scenario, image);
+      setGeneratedVideo(videoUrl);
+      
       toast({
-        title: "Scénario généré !",
-        description: data.message || "Le scénario a été créé avec succès.",
+        title: "Vidéo générée !",
+        description: "Votre vidéo a été créée avec succès.",
       });
 
     } catch (error) {
