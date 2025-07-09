@@ -35,29 +35,30 @@ serve(async (req) => {
     }
 
     console.log('Starting image animation with prompt:', prompt);
+    console.log('Image base64 length:', imageBase64.length);
 
-    // Add timeout wrapper for the Replicate API call
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Request timed out after 5 minutes')), 5 * 60 * 1000);
-    });
-
-    // Use Hailuo 2 for image animation (working model)
-    const replicatePromise = replicate.run(
-      "minimax/hailuo-02",
+    // Use Stable Video Diffusion for image animation
+    console.log('Calling Replicate API with stable-video-diffusion...');
+    const output = await replicate.run(
+      "stability-ai/stable-video-diffusion:3f0457e4619dadc561154bdddbf76b68cc2b21e97b28b7ffd4da8c1369b0e5f6",
       {
         input: {
-          image: imageBase64,
-          prompt: prompt,
-          duration: 6, // Use 6 seconds to avoid resolution constraints
-          quality: "standard"
+          cond_aug: 0.02,
+          decoding_t: 14,
+          input_image: imageBase64,
+          video_length: "14_frames_with_svd",
+          sizing_strategy: "maintain_aspect_ratio",
+          motion_bucket_id: 127,
+          frames_per_second: 6
         }
       }
     );
 
-    console.log('Waiting for Replicate API response...');
-    const output = await Promise.race([replicatePromise, timeoutPromise]);
-
     console.log('Video generation completed:', output);
+
+    if (!output) {
+      throw new Error('No output received from Replicate API');
+    }
 
     return new Response(
       JSON.stringify({
