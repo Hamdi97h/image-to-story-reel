@@ -48,11 +48,10 @@ const VideoGenerator = () => {
         reader.readAsDataURL(image);
       });
 
-      // Call the Edge Function to generate video
+      // Call the Edge Function to generate scenario
       const { data, error } = await supabase.functions.invoke('generate-video', {
         body: {
-          prompt: prompt,
-          imageFile: imageBase64
+          prompt: prompt
         }
       });
 
@@ -61,11 +60,10 @@ const VideoGenerator = () => {
       }
 
       setScenario(data.scenario);
-      setGeneratedVideo(data.videoUrl);
       
       toast({
-        title: "Vidéo générée !",
-        description: "Votre vidéo est prête à être visionnée.",
+        title: "Scénario généré !",
+        description: data.message || "Le scénario a été créé avec succès.",
       });
 
     } catch (error) {
