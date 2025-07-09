@@ -38,16 +38,15 @@ serve(async (req) => {
 
     // Use Stable Video Diffusion for image animation
     const output = await replicate.run(
-      "stability-ai/stable-video-diffusion",
+      "stability-ai/stable-video-diffusion-img2vid-xt",
       {
         input: {
           input_image: imageBase64,
           motion_bucket_id: 127,
           cond_aug: 0.02,
           decoding_t: 14,
-          video_length: Math.min(duration || 10, 25), // Max 25 frames for this model
+          video_length: Math.min(duration || 14, 25), // Max 25 frames for this model
           sizing_strategy: "maintain_aspect_ratio",
-          augment_prompt: true,
           prompt: `${prompt}. Make this image come alive with realistic motion and animation.`
         }
       }
