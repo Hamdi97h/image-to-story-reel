@@ -15,6 +15,7 @@ const VideoGenerator = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null);
   const [scenario, setScenario] = useState<string | null>(null);
+  const [duration, setDuration] = useState<number>(10);
   const { toast } = useToast();
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -56,62 +57,113 @@ const VideoGenerator = () => {
 
         mediaRecorder.start();
 
-        // Split scenario into scenes
+        // Calculate timing
+        const totalDuration = duration * 1000; // Convert to milliseconds
         const scenes = scenarioText.split(/Scène \d+:/).filter(scene => scene.trim().length > 0);
-        const sceneDuration = 3000; // 3 seconds per scene
+        const sceneDuration = totalDuration / scenes.length;
+        const frameInterval = 1000 / 30; // 30 FPS
+        const framesPerScene = Math.floor(sceneDuration / frameInterval);
 
-        for (let i = 0; i < scenes.length; i++) {
-          const scene = scenes[i].trim();
+        for (let sceneIndex = 0; sceneIndex < scenes.length; sceneIndex++) {
+          const scene = scenes[sceneIndex].trim();
           
-          // Clear canvas
-          ctx.fillStyle = '#000000';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          
-          // Draw image as background
-          const aspectRatio = img.width / img.height;
-          let drawWidth = canvas.width;
-          let drawHeight = canvas.width / aspectRatio;
-          
-          if (drawHeight > canvas.height) {
-            drawHeight = canvas.height;
-            drawWidth = canvas.height * aspectRatio;
-          }
-          
-          const x = (canvas.width - drawWidth) / 2;
-          const y = (canvas.height - drawHeight) / 2;
-          ctx.drawImage(img, x, y, drawWidth, drawHeight);
-          
-          // Add overlay
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-          ctx.fillRect(0, canvas.height - 200, canvas.width, 200);
-          
-          // Add text
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 24px Arial';
-          ctx.textAlign = 'center';
-          
-          const words = scene.split(' ');
-          const lines: string[] = [];
-          let currentLine = '';
-          
-          words.forEach(word => {
-            const testLine = currentLine + (currentLine ? ' ' : '') + word;
-            const metrics = ctx.measureText(testLine);
-            if (metrics.width > canvas.width - 100 && currentLine) {
-              lines.push(currentLine);
-              currentLine = word;
-            } else {
-              currentLine = testLine;
+          for (let frame = 0; frame < framesPerScene; frame++) {
+            const progress = frame / framesPerScene;
+            
+            // Clear canvas
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Calculate image transformations for animations
+            const aspectRatio = img.width / img.height;
+            let baseWidth = canvas.width;
+            let baseHeight = canvas.width / aspectRatio;
+            
+            if (baseHeight > canvas.height) {
+              baseHeight = canvas.height;
+              baseWidth = canvas.height * aspectRatio;
             }
-          });
-          if (currentLine) lines.push(currentLine);
-          
-          lines.forEach((line, index) => {
-            ctx.fillText(line, canvas.width / 2, canvas.height - 150 + (index * 30));
-          });
-          
-          // Wait for scene duration
-          await new Promise(resolve => setTimeout(resolve, sceneDuration));
+            
+            // Add zoom effect
+            const zoomFactor = 1 + (Math.sin(progress * Math.PI * 2) * 0.1);
+            const drawWidth = baseWidth * zoomFactor;
+            const drawHeight = baseHeight * zoomFactor;
+            
+            // Add slow pan effect
+            const panX = Math.sin(progress * Math.PI) * 20;
+            const panY = Math.cos(progress * Math.PI) * 10;
+            
+            const x = (canvas.width - drawWidth) / 2 + panX;
+            const y = (canvas.height - drawHeight) / 2 + panY;
+            
+            // Draw image with smooth scaling
+            ctx.save();
+            ctx.filter = `brightness(${0.8 + Math.sin(progress * Math.PI) * 0.2})`;
+            ctx.drawImage(img, x, y, drawWidth, drawHeight);
+            ctx.restore();
+            
+            // Add animated overlay
+            const overlayOpacity = 0.4 + Math.sin(progress * Math.PI * 4) * 0.1;
+            ctx.fillStyle = `rgba(0, 0, 0, ${overlayOpacity})`;
+            ctx.fillRect(0, canvas.height - 200, canvas.width, 200);
+            
+            // Add animated text
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 28px Arial';
+            ctx.textAlign = 'center';
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+            ctx.shadowBlur = 10;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 2;
+            
+            // Text animation effects
+            const textAlpha = Math.min(1, progress * 3); // Fade in effect
+            const textScale = 0.8 + (textAlpha * 0.2); // Scale effect
+            const textY = canvas.height - 150 + (1 - textAlpha) * 30; // Slide up effect
+            
+            ctx.save();
+            ctx.globalAlpha = textAlpha;
+            ctx.scale(textScale, textScale);
+            
+            // Word wrap for long text
+            const words = scene.split(' ');
+            const lines: string[] = [];
+            let currentLine = '';
+            
+            words.forEach(word => {
+              const testLine = currentLine + (currentLine ? ' ' : '') + word;
+              const metrics = ctx.measureText(testLine);
+              if (metrics.width > (canvas.width - 100) / textScale && currentLine) {
+                lines.push(currentLine);
+                currentLine = word;
+              } else {
+                currentLine = testLine;
+              }
+            });
+            if (currentLine) lines.push(currentLine);
+            
+            // Draw text lines with animation
+            lines.forEach((line, index) => {
+              const lineY = (textY + (index * 35)) / textScale;
+              const lineDelay = index * 0.2;
+              const lineAlpha = Math.max(0, Math.min(1, (progress - lineDelay) * 4));
+              
+              ctx.globalAlpha = textAlpha * lineAlpha;
+              ctx.fillText(line, canvas.width / 2 / textScale, lineY);
+            });
+            
+            ctx.restore();
+            
+            // Add scene transition effect
+            if (sceneIndex > 0 && frame < 15) {
+              const transitionAlpha = 1 - (frame / 15);
+              ctx.fillStyle = `rgba(0, 0, 0, ${transitionAlpha})`;
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+            
+            // Wait for next frame
+            await new Promise(resolve => setTimeout(resolve, frameInterval));
+          }
         }
 
         mediaRecorder.stop();
@@ -200,6 +252,21 @@ const VideoGenerator = () => {
                   onChange={(e) => setPrompt(e.target.value)}
                   className="h-24 resize-none"
                 />
+              </div>
+
+              <div>
+                <Label htmlFor="duration">Durée de la vidéo</Label>
+                <select
+                  id="duration"
+                  value={duration}
+                  onChange={(e) => setDuration(Number(e.target.value))}
+                  className="w-full p-2 border border-input rounded-md bg-background"
+                >
+                  <option value={5}>5 secondes</option>
+                  <option value={10}>10 secondes</option>
+                  <option value={15}>15 secondes</option>
+                  <option value={20}>20 secondes</option>
+                </select>
               </div>
 
               <div>
