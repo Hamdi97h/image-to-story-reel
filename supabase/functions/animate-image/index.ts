@@ -43,8 +43,8 @@ serve(async (req) => {
         input: {
           image: imageBase64,
           prompt: prompt,
-          duration: duration > 6 ? 10 : 6, // Only 6 or 10 seconds allowed
-          quality: "standard" // or "pro" for 1080p
+          duration: 6, // Use 6 seconds to avoid resolution constraints
+          quality: "standard"
         }
       }
     );
