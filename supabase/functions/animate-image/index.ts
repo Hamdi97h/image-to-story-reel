@@ -33,7 +33,12 @@ serve(async (req) => {
 
     // Call RunPod API for video generation
     console.log('Calling RunPod API...');
-    const runpodResponse = await fetch('https://api.runpod.ai/v2/run', {
+    
+    // RunPod requires a specific endpoint ID - this needs to be configured
+    const RUNPOD_ENDPOINT_ID = 'your-endpoint-id'; // This should be set as an environment variable
+    const runpodUrl = `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/runsync`;
+    
+    const runpodResponse = await fetch(runpodUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${RUNPOD_API_KEY}`,
@@ -44,9 +49,11 @@ serve(async (req) => {
           image: imageBase64,
           prompt: prompt,
           duration: duration,
-          model: "stable-video-diffusion",
-          resolution: "1024x576",
-          fps: 24
+          seed: Math.floor(Math.random() * 1000000),
+          fps: 8,
+          motion_bucket_id: 127,
+          cond_aug: 0.02,
+          decoding_t: 7
         }
       })
     });
