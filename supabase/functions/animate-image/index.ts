@@ -109,33 +109,55 @@ serve(async (req) => {
       
       console.log('Text-to-image generated successfully');
     } else {
-      // For video generation, try to parse as JSON
-      const contentType = vyroResponse.headers.get('content-type');
+      // For video generation, Vyro returns JSON with job ID
+      const vyroData = await vyroResponse.json();
+      console.log('Vyro AI JSON response:', vyroData);
       
-      if (contentType && contentType.includes('application/json')) {
-        result = await vyroResponse.json();
-        console.log('Vyro AI JSON response:', result);
-      } else {
-        // If it's not JSON, treat as binary data
-        const buffer = await vyroResponse.arrayBuffer();
-        const bytes = new Uint8Array(buffer);
+      if (vyroData.status === 'success' && vyroData.id) {
+        // Poll for the video result using the job ID
+        const pollUrl = `https://api.vyro.ai/v2/video/result/${vyroData.id}`;
+        console.log('Polling for video result:', pollUrl);
         
-        // Convert to base64 in chunks to avoid stack overflow
-        let binaryString = '';
-        const chunkSize = 8192;
-        for (let i = 0; i < bytes.length; i += chunkSize) {
-          const chunk = bytes.slice(i, i + chunkSize);
-          binaryString += String.fromCharCode(...chunk);
+        let attempts = 0;
+        const maxAttempts = 30; // 5 minutes max
+        
+        while (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+          attempts++;
+          
+          const pollResponse = await fetch(pollUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${VYRO_API_KEY}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (pollResponse.ok) {
+            const pollData = await pollResponse.json();
+            console.log(`Poll attempt ${attempts}:`, pollData);
+            
+            if (pollData.status === 'completed' && pollData.video_url) {
+              result = {
+                url: pollData.video_url,
+                format: 'video/mp4'
+              };
+              console.log('Video generation completed:', pollData.video_url);
+              break;
+            } else if (pollData.status === 'failed') {
+              throw new Error(`Video generation failed: ${pollData.error || 'Unknown error'}`);
+            }
+            // If status is still 'processing', continue polling
+          } else {
+            console.log(`Poll attempt ${attempts} failed:`, pollResponse.status);
+          }
         }
-        const base64Data = btoa(binaryString);
-        const dataUrl = `data:video/mp4;base64,${base64Data}`;
         
-        result = {
-          url: dataUrl,
-          format: 'video/mp4'
-        };
-        
-        console.log('Video generated as binary data');
+        if (!result.url) {
+          throw new Error('Video generation timed out after 5 minutes');
+        }
+      } else {
+        throw new Error(`Vyro AI returned unexpected response: ${JSON.stringify(vyroData)}`);
       }
     }
 
