@@ -11,16 +11,55 @@ serve(async (req) => {
   }
 
   try {
-    const RUNPOD_API_KEY = Deno.env.get('RUNPOD_API_KEY');
-    if (!RUNPOD_API_KEY) {
-      throw new Error('RUNPOD_API_KEY is not set');
+    const VYRO_API_KEY = Deno.env.get('VYRO_API_KEY');
+    if (!VYRO_API_KEY) {
+      throw new Error('VYRO_API_KEY is not set');
     }
 
-    const { imageBase64, prompt, duration = 10 } = await req.json();
+    const { imageBase64, prompt, type = 'image-to-video', style = 'kling-1.0-pro' } = await req.json();
 
-    if (!imageBase64 || !prompt) {
+    console.log(`Starting ${type} generation with Vyro AI:`, prompt);
+    
+    let endpoint = '';
+    const formData = new FormData();
+    
+    if (type === 'text-to-image') {
+      endpoint = 'https://api.vyro.ai/v2/image/generations';
+      formData.append('prompt', prompt || 'A beautiful landscape');
+      formData.append('style', 'realistic');
+      formData.append('aspect_ratio', '1:1');
+      formData.append('seed', '5');
+    } else if (type === 'text-to-video') {
+      endpoint = 'https://api.vyro.ai/v2/video/text-to-video';
+      formData.append('style', style);
+      formData.append('prompt', prompt || 'a flying dinosaur');
+    } else if (type === 'image-to-video') {
+      if (!imageBase64) {
+        return new Response(
+          JSON.stringify({ error: 'Image is required for image-to-video' }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+      
+      endpoint = 'https://api.vyro.ai/v2/video/image-to-video';
+      formData.append('style', style);
+      formData.append('prompt', prompt || 'animate this image');
+      
+      // Convert base64 to blob
+      const imageData = imageBase64.startsWith('data:') ? imageBase64.split(',')[1] : imageBase64;
+      const binaryData = atob(imageData);
+      const bytes = new Uint8Array(binaryData.length);
+      for (let i = 0; i < binaryData.length; i++) {
+        bytes[i] = binaryData.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: 'image/jpeg' });
+      formData.append('file', blob, 'image.jpg');
+    } else {
       return new Response(
-        JSON.stringify({ error: 'Image and prompt are required' }),
+        JSON.stringify({ error: 'Invalid type. Must be text-to-image, text-to-video, or image-to-video' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -28,89 +67,33 @@ serve(async (req) => {
       );
     }
 
-    console.log('Starting video generation with RunPod:', prompt);
-    console.log('Image base64 length:', imageBase64.length);
-
-    // Call RunPod API for video generation
-    console.log('Calling RunPod API...');
+    console.log(`Calling Vyro AI API: ${endpoint}`);
     
-    // RunPod requires a specific endpoint ID from environment variables
-    const RUNPOD_ENDPOINT_ID = Deno.env.get('RUNPOD_ENDPOINT_ID');
-    if (!RUNPOD_ENDPOINT_ID) {
-      throw new Error('RUNPOD_ENDPOINT_ID is not set');
-    }
-    const runpodUrl = `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/runsync`;
-    
-    const runpodResponse = await fetch(runpodUrl, {
+    const vyroResponse = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${RUNPOD_API_KEY}`,
-        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${VYRO_API_KEY}`,
       },
-      body: JSON.stringify({
-        input: {
-          image: imageBase64,
-          prompt: prompt,
-          duration: duration,
-          seed: Math.floor(Math.random() * 1000000),
-          fps: 8,
-          motion_bucket_id: 127,
-          cond_aug: 0.02,
-          decoding_t: 7
-        }
-      })
+      body: formData
     });
 
-    console.log('RunPod Response status:', runpodResponse.status);
-    console.log('RunPod Response headers:', Object.fromEntries(runpodResponse.headers.entries()));
+    console.log('Vyro Response status:', vyroResponse.status);
     
-    if (!runpodResponse.ok) {
-      const errorText = await runpodResponse.text();
-      console.error('RunPod API error:', errorText);
-      throw new Error(`RunPod API error: ${runpodResponse.status} ${errorText}`);
+    if (!vyroResponse.ok) {
+      const errorText = await vyroResponse.text();
+      console.error('Vyro AI API error:', errorText);
+      throw new Error(`Vyro AI API error: ${vyroResponse.status} ${errorText}`);
     }
 
-    // Get response as text first to debug
-    const responseText = await runpodResponse.text();
-    console.log('RunPod raw response:', responseText);
-    
-    let output;
-    try {
-      output = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('Failed to parse RunPod response as JSON:', parseError);
-      console.error('Raw response was:', responseText);
-      throw new Error(`Invalid JSON response from RunPod: ${parseError.message}`);
-    }
-    console.log('Video generation completed:', output);
-    console.log('Output structure:', JSON.stringify(output, null, 2));
-
-    if (!output) {
-      throw new Error('No output received from RunPod API');
-    }
-
-    // Handle RunPod response format
-    let videoUrl;
-    if (output.output) {
-      videoUrl = output.output.video_url || output.output.url || output.output;
-    } else if (output.data) {
-      videoUrl = output.data.video_url || output.data.url || output.data;
-    } else if (typeof output === 'string') {
-      videoUrl = output;
-    }
-
-    console.log('Extracted video URL:', videoUrl);
-
-    if (!videoUrl) {
-      console.error('Could not extract video URL from output:', output);
-      throw new Error('Could not extract video URL from RunPod response');
-    }
+    const result = await vyroResponse.json();
+    console.log('Vyro AI response:', result);
 
     return new Response(
       JSON.stringify({
         success: true,
-        videoUrl: videoUrl,
-        message: 'Vidéo générée avec succès via RunPod!'
+        result: result,
+        type: type,
+        message: `${type} généré avec succès via Vyro AI!`
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -120,7 +103,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: `Erreur lors de la génération: ${error.message}`,
-        details: 'Vérifiez que la clé API RunPod est correctement configurée.'
+        details: 'Vérifiez que la clé API Vyro est correctement configurée.'
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

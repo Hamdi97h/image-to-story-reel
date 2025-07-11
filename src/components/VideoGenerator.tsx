@@ -14,8 +14,9 @@ const VideoGenerator = () => {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null);
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [scenario, setScenario] = useState<string | null>(null);
-  const [duration, setDuration] = useState<number>(10);
+  const [generationType, setGenerationType] = useState<'text-to-image' | 'text-to-video' | 'image-to-video'>('image-to-video');
   const { toast } = useToast();
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -30,76 +31,90 @@ const VideoGenerator = () => {
     }
   };
 
-  const generateVideoFromImage = async (imageFile: File, promptText: string) => {
-    // Convert image to base64
-    const reader = new FileReader();
-    const imageBase64 = await new Promise<string>((resolve) => {
-      reader.onload = (e) => resolve(e.target?.result as string);
-      reader.readAsDataURL(imageFile);
-    });
+  const generateContent = async () => {
+    let imageBase64 = '';
+    
+    // Convert image to base64 if needed
+    if (image && (generationType === 'image-to-video')) {
+      const reader = new FileReader();
+      imageBase64 = await new Promise<string>((resolve) => {
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.readAsDataURL(image);
+      });
+    }
 
-    // Call the Edge Function to animate the image with AI
+    // Call the Edge Function with Vyro AI
     const { data, error } = await supabase.functions.invoke('animate-image', {
       body: {
         imageBase64: imageBase64,
-        prompt: promptText,
-        duration: duration
+        prompt: prompt,
+        type: generationType,
+        style: 'kling-1.0-pro'
       }
     });
 
     if (error) {
       console.error('Edge function error:', error);
-      throw new Error(`Animation failed: ${error.message || 'Unknown error'}`);
+      throw new Error(`Generation failed: ${error.message || 'Unknown error'}`);
     }
 
     if (!data) {
-      throw new Error('No data received from animation service');
+      throw new Error('No data received from generation service');
     }
 
     if (data.error) {
       throw new Error(data.error);
     }
 
-    if (!data.videoUrl) {
-      throw new Error('No video URL received from animation service');
-    }
-
-    return data.videoUrl;
+    return data.result;
   };
 
   const handleGenerate = async () => {
-    if (!prompt.trim() || !image) {
+    if (!prompt.trim()) {
       toast({
         title: "Champs manquants",
-        description: "Veuillez entrer un texte et uploader une image.",
+        description: "Veuillez entrer un texte.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (generationType === 'image-to-video' && !image) {
+      toast({
+        title: "Image manquante",
+        description: "Veuillez uploader une image pour la conversion image vers vidéo.",
         variant: "destructive",
       });
       return;
     }
 
     setIsGenerating(true);
+    setGeneratedVideo(null);
+    setGeneratedImage(null);
+    
     try {
-      // Call the Edge Function to generate scenario
-      const { data, error } = await supabase.functions.invoke('generate-video', {
-        body: {
-          prompt: prompt
+      // Generate content with Vyro AI
+      const result = await generateContent();
+      
+      if (generationType === 'text-to-image') {
+        // Handle image generation result
+        if (result.url) {
+          setGeneratedImage(result.url);
+          toast({
+            title: "Image générée !",
+            description: "Votre image a été créée avec succès.",
+          });
         }
-      });
-
-      if (error) {
-        throw new Error(error.message);
+      } else {
+        // Handle video generation result
+        if (result.url) {
+          setGeneratedVideo(result.url);
+          toast({
+            title: "Vidéo générée !",
+            description: "Votre vidéo a été créée avec succès.",
+          });
+        }
       }
-
-      setScenario(data.scenario);
-      
-      // Generate AI-animated video from image and prompt
-      const videoUrl = await generateVideoFromImage(image, prompt);
-      setGeneratedVideo(videoUrl);
-      
-      toast({
-        title: "Vidéo animée générée !",
-        description: "Votre photo a été transformée en vidéo animée avec succès.",
-      });
 
     } catch (error) {
       console.error('Erreur:', error);
@@ -118,10 +133,10 @@ const VideoGenerator = () => {
       <div className="container mx-auto max-w-4xl">
         <div className="text-center mb-8 animate-slide-up">
           <h1 className="text-4xl font-bold bg-gradient-primary bg-clip-text text-transparent mb-4">
-            Générateur de Vidéos IA
+            Générateur IA Vyro
           </h1>
           <p className="text-muted-foreground text-lg">
-            Transformez vos idées en vidéos avec DeepSeek AI et FFmpeg
+            Créez des images et vidéos avec Vyro AI
           </p>
         </div>
 
@@ -136,6 +151,20 @@ const VideoGenerator = () => {
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
+                <Label htmlFor="type">Type de génération</Label>
+                <select
+                  id="type"
+                  value={generationType}
+                  onChange={(e) => setGenerationType(e.target.value as any)}
+                  className="w-full p-2 border border-input rounded-md bg-background"
+                >
+                  <option value="text-to-image">Texte vers Image</option>
+                  <option value="text-to-video">Texte vers Vidéo</option>
+                  <option value="image-to-video">Image vers Vidéo</option>
+                </select>
+              </div>
+
+              <div>
                 <Label htmlFor="prompt">Prompt texte</Label>
                 <Textarea
                   id="prompt"
@@ -146,62 +175,49 @@ const VideoGenerator = () => {
                 />
               </div>
 
-              <div>
-                <Label htmlFor="duration">Durée de la vidéo</Label>
-                <select
-                  id="duration"
-                  value={duration}
-                  onChange={(e) => setDuration(Number(e.target.value))}
-                  className="w-full p-2 border border-input rounded-md bg-background"
-                >
-                  <option value={5}>5 secondes</option>
-                  <option value={10}>10 secondes</option>
-                  <option value={15}>15 secondes</option>
-                  <option value={20}>20 secondes</option>
-                </select>
-              </div>
-
-              <div>
-                <Label htmlFor="image">Image de fond</Label>
-                <div className="border-2 border-dashed border-upload-border rounded-lg p-6 text-center">
-                  {imagePreview ? (
-                    <div className="space-y-4">
-                      <img
-                        src={imagePreview}
-                        alt="Preview"
-                        className="max-h-32 mx-auto rounded-lg shadow-md"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setImage(null);
-                          setImagePreview(null);
-                        }}
-                      >
-                        Changer d'image
-                      </Button>
-                    </div>
-                  ) : (
-                    <label htmlFor="image-upload" className="cursor-pointer">
-                      <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">
-                        Cliquez pour uploader une image
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        JPG, PNG jusqu'à 10MB
-                      </p>
-                    </label>
-                  )}
-                  <Input
-                    id="image-upload"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                  />
+              {generationType === 'image-to-video' && (
+                <div>
+                  <Label htmlFor="image">Image de base</Label>
+                  <div className="border-2 border-dashed border-upload-border rounded-lg p-6 text-center">
+                    {imagePreview ? (
+                      <div className="space-y-4">
+                        <img
+                          src={imagePreview}
+                          alt="Preview"
+                          className="max-h-32 mx-auto rounded-lg shadow-md"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setImage(null);
+                            setImagePreview(null);
+                          }}
+                        >
+                          Changer d'image
+                        </Button>
+                      </div>
+                    ) : (
+                      <label htmlFor="image-upload" className="cursor-pointer">
+                        <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">
+                          Cliquez pour uploader une image
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          JPG, PNG jusqu'à 10MB
+                        </p>
+                      </label>
+                    )}
+                    <Input
+                      id="image-upload"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
               <Button
                 onClick={handleGenerate}
@@ -216,7 +232,7 @@ const VideoGenerator = () => {
                 ) : (
                   <>
                     <FileVideo className="w-4 h-4 mr-2" />
-                    Générer la vidéo
+                    Générer {generationType === 'text-to-image' ? 'l\'image' : 'la vidéo'}
                   </>
                 )}
               </Button>
@@ -232,25 +248,32 @@ const VideoGenerator = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {scenario && (
-                <div>
-                  <Label>Scénario généré</Label>
-                  <div className="bg-muted p-4 rounded-lg">
-                    <pre className="text-sm whitespace-pre-wrap font-mono">
-                      {scenario}
-                    </pre>
-                  </div>
-                </div>
-              )}
-
               {isGenerating && (
                 <div className="text-center space-y-4">
                   <div className="animate-pulse-slow">
                     <FileVideo className="w-16 h-16 mx-auto text-video-bg" />
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Génération de la vidéo en cours...
+                    Génération en cours...
                   </p>
+                </div>
+              )}
+
+              {generatedImage && (
+                <div className="space-y-4">
+                  <img
+                    src={generatedImage}
+                    alt="Generated image"
+                    className="w-full rounded-lg"
+                  />
+                  <Button 
+                    className="w-full" 
+                    variant="outline"
+                    onClick={() => window.open(generatedImage, '_blank')}
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Télécharger l'image
+                  </Button>
                 </div>
               )}
 
@@ -274,10 +297,10 @@ const VideoGenerator = () => {
                 </div>
               )}
 
-              {!scenario && !isGenerating && (
+              {!generatedImage && !generatedVideo && !isGenerating && (
                 <div className="text-center text-muted-foreground py-12">
                   <FileVideo className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                  <p>Votre vidéo apparaîtra ici</p>
+                  <p>Votre contenu apparaîtra ici</p>
                 </div>
               )}
             </CardContent>
