@@ -85,8 +85,41 @@ serve(async (req) => {
       throw new Error(`Vyro AI API error: ${vyroResponse.status} ${errorText}`);
     }
 
-    const result = await vyroResponse.json();
-    console.log('Vyro AI response:', result);
+    let result;
+    
+    if (type === 'text-to-image') {
+      // For text-to-image, Vyro returns the image directly as binary data
+      const imageBuffer = await vyroResponse.arrayBuffer();
+      const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+      const imageUrl = `data:image/jpeg;base64,${base64Image}`;
+      
+      result = {
+        url: imageUrl,
+        format: 'image/jpeg'
+      };
+      
+      console.log('Text-to-image generated successfully');
+    } else {
+      // For video generation, try to parse as JSON
+      const contentType = vyroResponse.headers.get('content-type');
+      
+      if (contentType && contentType.includes('application/json')) {
+        result = await vyroResponse.json();
+        console.log('Vyro AI JSON response:', result);
+      } else {
+        // If it's not JSON, treat as binary data
+        const buffer = await vyroResponse.arrayBuffer();
+        const base64Data = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+        const dataUrl = `data:video/mp4;base64,${base64Data}`;
+        
+        result = {
+          url: dataUrl,
+          format: 'video/mp4'
+        };
+        
+        console.log('Video generated as binary data');
+      }
+    }
 
     return new Response(
       JSON.stringify({
