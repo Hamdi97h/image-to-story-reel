@@ -18,11 +18,11 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements and install Python dependencies
-COPY runpod-endpoint/requirements.txt .
+COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Copy handler code
-COPY runpod-endpoint/handler.py .
+COPY handler.py .
 
 # Expose port
 EXPOSE 8000
