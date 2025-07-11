@@ -90,7 +90,16 @@ serve(async (req) => {
     if (type === 'text-to-image') {
       // For text-to-image, Vyro returns the image directly as binary data
       const imageBuffer = await vyroResponse.arrayBuffer();
-      const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+      const bytes = new Uint8Array(imageBuffer);
+      
+      // Convert to base64 in chunks to avoid stack overflow
+      let binaryString = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode(...chunk);
+      }
+      const base64Image = btoa(binaryString);
       const imageUrl = `data:image/jpeg;base64,${base64Image}`;
       
       result = {
@@ -109,7 +118,16 @@ serve(async (req) => {
       } else {
         // If it's not JSON, treat as binary data
         const buffer = await vyroResponse.arrayBuffer();
-        const base64Data = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+        const bytes = new Uint8Array(buffer);
+        
+        // Convert to base64 in chunks to avoid stack overflow
+        let binaryString = '';
+        const chunkSize = 8192;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          const chunk = bytes.slice(i, i + chunkSize);
+          binaryString += String.fromCharCode(...chunk);
+        }
+        const base64Data = btoa(binaryString);
         const dataUrl = `data:video/mp4;base64,${base64Data}`;
         
         result = {
