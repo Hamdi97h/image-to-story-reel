@@ -114,9 +114,9 @@ serve(async (req) => {
       console.log('Vyro AI JSON response:', vyroData);
       
       if (vyroData.status === 'success' && vyroData.id) {
-        // Poll for the video result using the job ID
-        const pollUrl = `https://api.vyro.ai/v2/video/result/${vyroData.id}`;
-        console.log('Polling for video result:', pollUrl);
+        // Poll for the video result using the correct endpoint
+        const pollUrl = `https://api.vyro.ai/v2/video/status`;
+        console.log('Polling for video result with ID:', vyroData.id);
         
         let attempts = 0;
         const maxAttempts = 30; // 5 minutes max
@@ -126,11 +126,12 @@ serve(async (req) => {
           attempts++;
           
           const pollResponse = await fetch(pollUrl, {
-            method: 'GET',
+            method: 'POST',
             headers: {
               'Authorization': `Bearer ${VYRO_API_KEY}`,
               'Content-Type': 'application/json'
-            }
+            },
+            body: JSON.stringify({ id: vyroData.id })
           });
           
           if (pollResponse.ok) {
