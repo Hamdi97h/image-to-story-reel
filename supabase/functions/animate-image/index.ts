@@ -34,8 +34,11 @@ serve(async (req) => {
     // Call RunPod API for video generation
     console.log('Calling RunPod API...');
     
-    // RunPod requires a specific endpoint ID - this needs to be configured
-    const RUNPOD_ENDPOINT_ID = 'your-endpoint-id'; // This should be set as an environment variable
+    // RunPod requires a specific endpoint ID from environment variables
+    const RUNPOD_ENDPOINT_ID = Deno.env.get('RUNPOD_ENDPOINT_ID');
+    if (!RUNPOD_ENDPOINT_ID) {
+      throw new Error('RUNPOD_ENDPOINT_ID is not set');
+    }
     const runpodUrl = `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/runsync`;
     
     const runpodResponse = await fetch(runpodUrl, {
