@@ -51,13 +51,27 @@ serve(async (req) => {
       })
     });
 
+    console.log('RunPod Response status:', runpodResponse.status);
+    console.log('RunPod Response headers:', Object.fromEntries(runpodResponse.headers.entries()));
+    
     if (!runpodResponse.ok) {
       const errorText = await runpodResponse.text();
       console.error('RunPod API error:', errorText);
       throw new Error(`RunPod API error: ${runpodResponse.status} ${errorText}`);
     }
 
-    const output = await runpodResponse.json();
+    // Get response as text first to debug
+    const responseText = await runpodResponse.text();
+    console.log('RunPod raw response:', responseText);
+    
+    let output;
+    try {
+      output = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse RunPod response as JSON:', parseError);
+      console.error('Raw response was:', responseText);
+      throw new Error(`Invalid JSON response from RunPod: ${parseError.message}`);
+    }
     console.log('Video generation completed:', output);
     console.log('Output structure:', JSON.stringify(output, null, 2));
 
